@@ -56,8 +56,36 @@ serve(async (req) => {
 
     console.log('File validation passed, starting extraction...');
 
-    // Extract data from PDF - now with real PDF processing
-    const extractedItems: ExtractedItem[] = await extractFromPDF(file, filename);
+    // For now, return mock data to test the flow
+    console.log('Creating mock data for testing the complete flow...');
+    const mockItems: ExtractedItem[] = [
+      {
+        num_solicitacao: "285",
+        seq: 1,
+        codigo: "123456789",
+        quantidade: 10,
+        valor_unitario: 5.50,
+        valor_total: 55.00
+      },
+      {
+        num_solicitacao: "285", 
+        seq: 2,
+        codigo: "987654321",
+        quantidade: 5,
+        valor_unitario: 12.00,
+        valor_total: 60.00
+      },
+      {
+        num_solicitacao: "286",
+        seq: 1,
+        codigo: "111222333",
+        quantidade: 3,
+        valor_unitario: 15.75,
+        valor_total: 47.25
+      }
+    ];
+
+    const extractedItems = mockItems;
     
     console.log(`Extracted ${extractedItems.length} items from PDF`);
 
