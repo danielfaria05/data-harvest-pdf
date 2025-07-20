@@ -107,46 +107,47 @@ async function simulatePDFExtraction(base64File: string): Promise<ExtractedItem[
   // Simulate processing delay
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  // Mock extracted data using the EXACT values from user's example
-  // Note: valor_total is already the total value (not unit price)
+  // Mock extracted data respecting real PDF structure:
+  // - Some solicitations have 1 item, others can have up to 20+ items
+  // - Sequence resets to 1 when solicitation number changes
   const mockItems: ExtractedItem[] = [
-    // Solicitação 286344
+    // Solicitação 286344 - 3 itens (seq 1, 2, 3)
     {
       num_solicitacao: "286344",
       seq: 1,
       codigo: "242401223",
       quantidade: 30.00000,
-      valor_unitario: 12.081300,  // 362.439 / 30
-      valor_total: 362.439000     // Total para 30 peças
+      valor_unitario: 12.081300,
+      valor_total: 362.439000
     },
     {
       num_solicitacao: "286344",
       seq: 2,
       codigo: "242401312",
       quantidade: 10.00000,
-      valor_unitario: 17.879400,  // 178.794 / 10
-      valor_total: 178.794000     // Total para 10 peças
+      valor_unitario: 17.879400,
+      valor_total: 178.794000
+    },
+    {
+      num_solicitacao: "286344",
+      seq: 3,
+      codigo: "242401445",
+      quantidade: 5.00000,
+      valor_unitario: 89.120000,
+      valor_total: 445.600000
     },
     
-    // Solicitação 286348 (sequência volta para 1 = nova solicitação)
+    // Solicitação 286348 - apenas 1 item (seq 1)
     {
       num_solicitacao: "286348",
       seq: 1,
       codigo: "201500065",
       quantidade: 2.00000,
-      valor_unitario: 28.228200,  // 56.4564 / 2
-      valor_total: 56.456400      // Total para 2 peças
+      valor_unitario: 28.228200,
+      valor_total: 56.456400
     },
     
-    // Additional items to simulate more data
-    {
-      num_solicitacao: "286348",
-      seq: 2,
-      codigo: "201500078",
-      quantidade: 1.50000,
-      valor_unitario: 125.330000,
-      valor_total: 187.995000
-    },
+    // Solicitação 286349 - 6 itens (seq 1 até 6)
     {
       num_solicitacao: "286349",
       seq: 1,
@@ -164,6 +165,40 @@ async function simulatePDFExtraction(base64File: string): Promise<ExtractedItem[
       valor_total: 267.360000
     },
     {
+      num_solicitacao: "286349",
+      seq: 3,
+      codigo: "301200458",
+      quantidade: 15.50000,
+      valor_unitario: 42.300000,
+      valor_total: 655.650000
+    },
+    {
+      num_solicitacao: "286349",
+      seq: 4,
+      codigo: "301200459",
+      quantidade: 7.25000,
+      valor_unitario: 156.780000,
+      valor_total: 1136.655000
+    },
+    {
+      num_solicitacao: "286349",
+      seq: 5,
+      codigo: "301200460",
+      quantidade: 12.00000,
+      valor_unitario: 98.450000,
+      valor_total: 1181.400000
+    },
+    {
+      num_solicitacao: "286349",
+      seq: 6,
+      codigo: "301200461",
+      quantidade: 4.75000,
+      valor_unitario: 203.120000,
+      valor_total: 964.820000
+    },
+    
+    // Solicitação 286350 - 2 itens (seq 1, 2)
+    {
       num_solicitacao: "286350",
       seq: 1,
       codigo: "401300789",
@@ -178,8 +213,45 @@ async function simulatePDFExtraction(base64File: string): Promise<ExtractedItem[
       quantidade: 6.50000,
       valor_unitario: 156.780000,
       valor_total: 1019.070000
+    },
+    
+    // Solicitação 286351 - 4 itens (seq 1 até 4)  
+    {
+      num_solicitacao: "286351",
+      seq: 1,
+      codigo: "501400123",
+      quantidade: 25.00000,
+      valor_unitario: 78.900000,
+      valor_total: 1972.500000
+    },
+    {
+      num_solicitacao: "286351",
+      seq: 2,
+      codigo: "501400124",
+      quantidade: 18.75000,
+      valor_unitario: 45.670000,
+      valor_total: 856.312500
+    },
+    {
+      num_solicitacao: "286351",
+      seq: 3,
+      codigo: "501400125",
+      quantidade: 9.50000,
+      valor_unitario: 234.560000,
+      valor_total: 2228.320000
+    },
+    {
+      num_solicitacao: "286351",
+      seq: 4,
+      codigo: "501400126",
+      quantidade: 3.25000,
+      valor_unitario: 567.890000,
+      valor_total: 1845.642500
     }
   ];
+
+  console.log(`Simulated extraction of ${mockItems.length} items from ${new Set(mockItems.map(item => item.num_solicitacao)).size} solicitations`);
+  return mockItems;
 
   console.log(`Simulated extraction of ${mockItems.length} items`);
   return mockItems;
