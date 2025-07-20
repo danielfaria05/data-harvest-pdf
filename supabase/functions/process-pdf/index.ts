@@ -3,7 +3,7 @@
 //------------------------------------------------
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { decode as b64decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
-import { extractText } from "https://deno.land/x/unpdf@0.6.0/mod.ts"; // 🔥 novo
+import { extractText } from "https://esm.sh/unpdf@0.7.1?dts";
 
 //------------------------------------------------
 // CORS + TIPOS (iguais)
