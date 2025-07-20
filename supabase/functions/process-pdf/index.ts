@@ -113,89 +113,93 @@ serve(async (req) => {
   }
 });
 
-// Simulate PDF extraction - replace with actual PDF parsing logic
+// Simulate PDF extraction based on the real format shown
 async function simulatePDFExtraction(base64File: string): Promise<ExtractedItem[]> {
   // Simulate processing delay
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  // Mock extracted data that simulates a real boletim de medição
+  // Mock extracted data that matches the actual boletim format shown
   const mockItems: ExtractedItem[] = [
+    // Solicitação 286.344
     {
       num_solicitacao: "286344",
       seq: 1,
       codigo: "242401223",
       quantidade: 30.00000,
-      valor_unitario: 362.439000,
-      valor_total: 10873.17
+      valor_unitario: 362.43000,
+      valor_total: 10872.90
     },
     {
       num_solicitacao: "286344",
       seq: 2,
-      codigo: "242401224",
-      quantidade: 15.50000,
-      valor_unitario: 125.80000,
-      valor_total: 1949.40
+      codigo: "242401312",
+      quantidade: 10.00000,
+      valor_unitario: 178.78000,
+      valor_total: 1787.80
     },
+    
+    // Solicitação 286.348
     {
-      num_solicitacao: "286345",
+      num_solicitacao: "286348",
       seq: 1,
-      codigo: "242401225",
-      quantidade: 8.00000,
-      valor_unitario: 450.75000,
-      valor_total: 3606.00
+      codigo: "201500065",
+      quantidade: 2.00000,
+      valor_unitario: 56.45600,
+      valor_total: 112.91
     },
     {
-      num_solicitacao: "286345",
+      num_solicitacao: "286348",
       seq: 2,
-      codigo: "242401226",
-      quantidade: 22.30000,
-      valor_unitario: 89.50000,
-      valor_total: 1995.85
+      codigo: "311001772",
+      quantidade: 5.00000,
+      valor_unitario: 636.86700,
+      valor_total: 3184.34
     },
+    
+    // Solicitação 286.349
     {
-      num_solicitacao: "286346",
+      num_solicitacao: "286349",
       seq: 1,
-      codigo: "242401227",
-      quantidade: 12.75000,
-      valor_unitario: 678.90000,
-      valor_total: 8655.98
+      codigo: "242401372",
+      quantidade: 16.00000,
+      valor_unitario: 229.45600,
+      valor_total: 3671.30
     },
+    
+    // Additional sample items to demonstrate variety
     {
-      num_solicitacao: "286346",
-      seq: 2,
-      codigo: "242401228",
-      quantidade: 5.25000,
-      valor_unitario: 234.60000,
-      valor_total: 1231.65
-    },
-    {
-      num_solicitacao: "286347",
+      num_solicitacao: "286350",
       seq: 1,
-      codigo: "242401229",
-      quantidade: 18.00000,
-      valor_unitario: 156.25000,
-      valor_total: 2812.50
+      codigo: "311002001",
+      quantidade: 12.50000,
+      valor_unitario: 145.80000,
+      valor_total: 1822.50
     },
     {
-      num_solicitacao: "286347",
+      num_solicitacao: "286350",
       seq: 2,
-      codigo: "242401230",
-      quantidade: 45.60000,
-      valor_unitario: 98.75000,
-      valor_total: 4503.00
+      codigo: "242401445",
+      quantidade: 8.75000,
+      valor_unitario: 95.20000,
+      valor_total: 833.00
+    },
+    {
+      num_solicitacao: "286351",
+      seq: 1,
+      codigo: "201500123",
+      quantidade: 25.00000,
+      valor_unitario: 78.90000,
+      valor_total: 1972.50
     }
   ];
 
-  // Add some randomization to make it more realistic
-  const randomizedItems = mockItems.map((item, index) => ({
+  // Add some slight randomization to make it more realistic
+  return mockItems.map((item, index) => ({
     ...item,
-    seq: index + 1,
-    quantidade: item.quantidade + (Math.random() - 0.5) * 2,
-    valor_unitario: item.valor_unitario + (Math.random() - 0.5) * 50,
-  }));
-
-  // Recalculate valor_total
-  return randomizedItems.map(item => ({
+    // Keep the same structure but add minor variations
+    quantidade: Number((item.quantidade + (Math.random() - 0.5) * 1).toFixed(5)),
+    valor_unitario: Number((item.valor_unitario + (Math.random() - 0.5) * 10).toFixed(6)),
+  })).map(item => ({
     ...item,
     valor_total: Number((item.quantidade * item.valor_unitario).toFixed(6))
   }));
