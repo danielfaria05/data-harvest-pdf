@@ -35,12 +35,55 @@ export type Database = {
         }
         Relationships: []
       }
+      itens_solicitados: {
+        Row: {
+          codigo: string
+          created_at: string
+          data_extracao: string
+          id: string
+          num_solicitacao: string
+          quantidade: number
+          seq: number
+          valor_total: number
+          valor_unitario: number
+        }
+        Insert: {
+          codigo: string
+          created_at?: string
+          data_extracao?: string
+          id?: string
+          num_solicitacao: string
+          quantidade: number
+          seq: number
+          valor_total: number
+          valor_unitario: number
+        }
+        Update: {
+          codigo?: string
+          created_at?: string
+          data_extracao?: string
+          id?: string
+          num_solicitacao?: string
+          quantidade?: number
+          seq?: number
+          valor_total?: number
+          valor_unitario?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_extraction_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          quantidade_total_itens: number
+          valor_total_extraido: number
+          total_solicitacoes: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
