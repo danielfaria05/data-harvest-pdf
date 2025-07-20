@@ -149,11 +149,12 @@ function parseBoletimMedicao(text: string): ExtractedItem[] {
   
   const items: ExtractedItem[] = [];
   
-  // Patterns to identify solicitation numbers and items
+  // More flexible patterns to identify solicitation numbers
   const solicitationPatterns = [
-    /(?:Solicitação|solicitação|SOLICITAÇÃO)[\s:]*(\d+)/gi,
-    /(?:Nº|N°|No\.|Numero)[\s]*(?:Solicitação|solicitação)[\s:]*(\d+)/gi,
-    /(?:Sol|SOL)[\s:]*(\d+)/gi
+    /(?:Solicitação|solicitação|SOLICITAÇÃO)[\s:]*(\d{3}\.?\d{3})/gi,
+    /(?:Nº|N°|No\.|Numero)[\s]*(?:Solicitação|solicitação)[\s:]*(\d{3}\.?\d{3})/gi,
+    /(\d{3}\.?\d{3})(?=.*(?:Seq|SEQ|seq))/gi,
+    /Sol[\s:]*(\d{3}\.?\d{3})/gi
   ];
   
   // Find all solicitation numbers in the text
@@ -163,8 +164,10 @@ function parseBoletimMedicao(text: string): ExtractedItem[] {
     let match;
     pattern.lastIndex = 0; // Reset regex
     while ((match = pattern.exec(text)) !== null) {
+      // Clean the solicitation number (remove dots)
+      const cleanNum = match[1].replace(/\./g, '');
       solicitations.push({
-        num: match[1],
+        num: cleanNum,
         index: match.index
       });
     }
@@ -178,6 +181,13 @@ function parseBoletimMedicao(text: string): ExtractedItem[] {
     .sort((a, b) => a.index - b.index);
   
   console.log('Found solicitations:', uniqueSolicitations.map(s => s.num));
+  
+  // If no solicitations found with patterns, try to extract items directly
+  if (uniqueSolicitations.length === 0) {
+    console.log('No solicitations found with patterns, trying direct extraction...');
+    const directItems = extractItemsFromSection(text, '001001');
+    return directItems;
+  }
   
   // Process each solicitation section
   for (let i = 0; i < uniqueSolicitations.length; i++) {
@@ -204,19 +214,23 @@ function parseBoletimMedicao(text: string): ExtractedItem[] {
 function extractItemsFromSection(sectionText: string, solicitationNum: string): ExtractedItem[] {
   const items: ExtractedItem[] = [];
   
-  // Multiple patterns to catch different table formats
+  // More comprehensive patterns to catch different table formats
   const itemPatterns = [
-    // Pattern 1: Seq + 9-digit code + description + quantity + unit value + total value
-    /(\d{1,3})\s+(\d{9})\s+[^\d]+?\s+([\d,\.]+)\s+[^\d]*?([\d,\.]+)\s+[^\d]*?([\d,\.]+)/gi,
+    // Pattern 1: Complete line with seq, code, description, qty, unit value, total
+    /(\d{1,3})\s+(\d{7,12})\s+[^\d\n]*?([\d,\.]+)\s+[^\d\n]*?([\d,\.]+)\s+[^\d\n]*?([\d,\.]+)/gi,
     
-    // Pattern 2: Looking for sequences of numbers that might be product data
-    /(\d{1,3})\s+(\d{8,12})\s+.+?\s+([\d,\.]+)\s+.+?\s+([\d,\.]+)\s+.+?\s+([\d,\.]+)/gi,
+    // Pattern 2: Look for lines starting with sequence number followed by product code
+    /^(\d{1,3})\s+(\d{7,12})[\s\S]*?([\d,\.]+)[\s\S]*?([\d,\.]+)[\s\S]*?([\d,\.]+)/gm,
     
-    // Pattern 3: More flexible pattern for any sequence-code-values combination
-    /(\d{1,3})\s+(\d{7,12})\s+.{10,100}?\s+([\d,\.]+)\s+.{0,20}?\s*([\d,\.]+)\s+.{0,20}?\s*([\d,\.]+)/gi
+    // Pattern 3: More flexible - any number sequence that could be item data
+    /(\d{1,3})\s+(\d{7,12}).*?(\d{1,10}[,\.]\d{1,6}).*?(\d{1,10}[,\.]\d{1,6}).*?(\d{1,15}[,\.]\d{1,6})/gi,
+    
+    // Pattern 4: Simple pattern for basic extraction
+    /(\d+)\s+(\d{7,12})\s+[\s\S]*?(\d+[,\.]\d+)[\s\S]*?(\d+[,\.]\d+)[\s\S]*?(\d+[,\.]\d+)/gi
   ];
   
   let sequenceCounter = 1;
+  const processedCodes = new Set<string>();
   
   for (const pattern of itemPatterns) {
     let match;
@@ -227,6 +241,11 @@ function extractItemsFromSection(sectionText: string, solicitationNum: string): 
         const seq = parseInt(match[1]);
         const codigo = match[2];
         
+        // Skip if we already processed this code
+        if (processedCodes.has(codigo)) {
+          continue;
+        }
+        
         // Parse numeric values, handling Brazilian number format
         const quantidadeStr = match[3].replace(/\./g, '').replace(',', '.');
         const valorUnitarioStr = match[4] ? match[4].replace(/\./g, '').replace(',', '.') : '0';
@@ -236,38 +255,36 @@ function extractItemsFromSection(sectionText: string, solicitationNum: string): 
         let valorUnitario = parseFloat(valorUnitarioStr);
         let valorTotal = parseFloat(valorTotalStr);
         
-        // If unit value is missing, calculate it
-        if (valorUnitario === 0 && valorTotal > 0 && quantidade > 0) {
-          valorUnitario = valorTotal / quantidade;
+        // Validate basic data
+        if (!codigo || codigo.length < 7 || isNaN(quantidade) || quantidade <= 0) {
+          continue;
         }
         
-        // If total value is missing, calculate it
-        if (valorTotal === 0 && valorUnitario > 0 && quantidade > 0) {
+        // Try to determine which values are correct based on magnitude
+        if (valorTotal > valorUnitario && quantidade > 0) {
+          // If total > unit, assume total is correct and calculate unit
+          if (valorUnitario === 0 || Math.abs(valorUnitario * quantidade - valorTotal) > valorTotal * 0.1) {
+            valorUnitario = valorTotal / quantidade;
+          }
+        } else if (valorUnitario > 0 && quantidade > 0) {
+          // If unit value seems reasonable, calculate total
           valorTotal = valorUnitario * quantidade;
         }
         
-        // Validate extracted data
-        if (codigo && codigo.length >= 7 && 
-            !isNaN(quantidade) && quantidade > 0 && 
-            !isNaN(valorTotal) && valorTotal > 0) {
+        // Final validation
+        if (valorTotal > 0 && valorUnitario > 0) {
+          processedCodes.add(codigo);
           
-          // Check if we already have this item (avoid duplicates)
-          const existingItem = items.find(item => 
-            item.codigo === codigo && item.num_solicitacao === solicitationNum
-          );
+          items.push({
+            num_solicitacao: solicitationNum,
+            seq: sequenceCounter++,
+            codigo: codigo,
+            quantidade: quantidade,
+            valor_unitario: Number(valorUnitario.toFixed(6)),
+            valor_total: Number(valorTotal.toFixed(6))
+          });
           
-          if (!existingItem) {
-            items.push({
-              num_solicitacao: solicitationNum,
-              seq: sequenceCounter++,
-              codigo: codigo,
-              quantidade: quantidade,
-              valor_unitario: valorUnitario,
-              valor_total: valorTotal
-            });
-            
-            console.log(`Extracted item: Sol ${solicitationNum}, Code ${codigo}, Qty ${quantidade}, Total R$ ${valorTotal.toFixed(2)}`);
-          }
+          console.log(`Extracted item: Sol ${solicitationNum}, Code ${codigo}, Qty ${quantidade}, Unit R$ ${valorUnitario.toFixed(2)}, Total R$ ${valorTotal.toFixed(2)}`);
         }
       } catch (error) {
         console.warn('Error parsing item data:', error);
@@ -275,9 +292,9 @@ function extractItemsFromSection(sectionText: string, solicitationNum: string): 
       }
     }
     
-    // If we found items with this pattern, don't try other patterns for this section
+    // If we found items with this pattern, continue to try other patterns for more items
     if (items.length > 0) {
-      break;
+      console.log(`Found ${items.length} items with pattern, continuing search...`);
     }
   }
   
