@@ -139,96 +139,87 @@ serve(async (req) => {
   }
 });
 
-// Simulate PDF extraction based on the real format shown
+// Simulate PDF extraction based on the real format shown by user
 async function simulatePDFExtraction(base64File: string): Promise<ExtractedItem[]> {
   // Simulate processing delay
   await new Promise(resolve => setTimeout(resolve, 2000));
   
-  // Mock extracted data that matches the actual boletim format shown
+  // Mock extracted data using the EXACT values from user's example
+  // Note: valor_total is already the total value (not unit price)
   const mockItems: ExtractedItem[] = [
-    // Solicitação 286.344
+    // Solicitação 286344
     {
       num_solicitacao: "286344",
       seq: 1,
       codigo: "242401223",
       quantidade: 30.00000,
-      valor_unitario: 362.43000,
-      valor_total: 10872.90
+      valor_unitario: 12.081300,  // 362.439 / 30
+      valor_total: 362.439000     // Total para 30 peças
     },
     {
       num_solicitacao: "286344",
       seq: 2,
       codigo: "242401312",
       quantidade: 10.00000,
-      valor_unitario: 178.78000,
-      valor_total: 1787.80
+      valor_unitario: 17.879400,  // 178.794 / 10
+      valor_total: 178.794000     // Total para 10 peças
     },
     
-    // Solicitação 286.348
+    // Solicitação 286348 (sequência volta para 1 = nova solicitação)
     {
       num_solicitacao: "286348",
       seq: 1,
       codigo: "201500065",
       quantidade: 2.00000,
-      valor_unitario: 56.45600,
-      valor_total: 112.91
+      valor_unitario: 28.228200,  // 56.4564 / 2
+      valor_total: 56.456400      // Total para 2 peças
     },
+    
+    // Additional items to simulate more data
     {
       num_solicitacao: "286348",
       seq: 2,
-      codigo: "311001772",
-      quantidade: 5.00000,
-      valor_unitario: 636.86700,
-      valor_total: 3184.34
+      codigo: "201500078",
+      quantidade: 1.50000,
+      valor_unitario: 125.330000,
+      valor_total: 187.995000
     },
-    
-    // Solicitação 286.349
     {
       num_solicitacao: "286349",
       seq: 1,
-      codigo: "242401372",
-      quantidade: 16.00000,
-      valor_unitario: 229.45600,
-      valor_total: 3671.30
+      codigo: "301200456",
+      quantidade: 8.00000,
+      valor_unitario: 75.450000,
+      valor_total: 603.600000
     },
-    
-    // Additional sample items to demonstrate variety
+    {
+      num_solicitacao: "286349",
+      seq: 2,
+      codigo: "301200457",
+      quantidade: 3.00000,
+      valor_unitario: 89.120000,
+      valor_total: 267.360000
+    },
     {
       num_solicitacao: "286350",
       seq: 1,
-      codigo: "311002001",
-      quantidade: 12.50000,
-      valor_unitario: 145.80000,
-      valor_total: 1822.50
+      codigo: "401300789",
+      quantidade: 12.00000,
+      valor_unitario: 34.560000,
+      valor_total: 414.720000
     },
     {
       num_solicitacao: "286350",
       seq: 2,
-      codigo: "242401445",
-      quantidade: 8.75000,
-      valor_unitario: 95.20000,
-      valor_total: 833.00
-    },
-    {
-      num_solicitacao: "286351",
-      seq: 1,
-      codigo: "201500123",
-      quantidade: 25.00000,
-      valor_unitario: 78.90000,
-      valor_total: 1972.50
+      codigo: "401300790",
+      quantidade: 6.50000,
+      valor_unitario: 156.780000,
+      valor_total: 1019.070000
     }
   ];
 
-  // Add some slight randomization to make it more realistic
-  return mockItems.map((item, index) => ({
-    ...item,
-    // Keep the same structure but add minor variations
-    quantidade: Number((item.quantidade + (Math.random() - 0.5) * 1).toFixed(5)),
-    valor_unitario: Number((item.valor_unitario + (Math.random() - 0.5) * 10).toFixed(6)),
-  })).map(item => ({
-    ...item,
-    valor_total: Number((item.quantidade * item.valor_unitario).toFixed(6))
-  }));
+  console.log(`Simulated extraction of ${mockItems.length} items`);
+  return mockItems;
 }
 
 /* 
