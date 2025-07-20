@@ -104,17 +104,18 @@ const Index = () => {
     }
   };
 
-  const handleSaveData = async () => {
+  const handleSaveData = async (semana: string) => {
     if (!extractedData) return;
     
     setIsSaving(true);
     
     try {
-      console.log('Salvando dados extraídos no banco...');
+      console.log('Salvando dados extraídos no banco para a semana:', semana);
       
       const { data, error } = await supabase.functions.invoke('save-extracted-data', {
         body: {
-          extracted_items: extractedData.extracted_items
+          extracted_items: extractedData.extracted_items,
+          semana: semana
         }
       });
 
@@ -169,50 +170,13 @@ const Index = () => {
       <main className="container mx-auto px-4 py-8">
         {/* Hero Section */}
         <div className="text-center mb-12">
-          <div className="flex justify-center mb-6">
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary to-primary-glow blur-xl opacity-30 rounded-full"></div>
-              <div className="relative bg-card p-6 rounded-2xl border border-border">
-                <FileText className="h-16 w-16 text-primary mx-auto" />
-              </div>
-            </div>
-          </div>
-          
           <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-primary to-primary-glow bg-clip-text text-transparent">
-            PDF Data Harvest
+            Extrator de BM Semanal
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            Sistema inteligente para extração automática de dados de boletins de medição. 
-            Faça upload do seu PDF e veja os dados estruturados instantaneamente.
+            Faça upload do seu PDF de Boletim de Medição e extraia os dados automaticamente.
           </p>
-          
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-12">
-            <div className="bg-card p-6 rounded-xl border border-border hover:border-primary/50 transition-all duration-300">
-              <Database className="h-8 w-8 text-primary mx-auto mb-3" />
-              <h3 className="font-semibold text-card-foreground">Extração Automática</h3>
-              <p className="text-sm text-muted-foreground mt-2">
-                Dados extraídos e estruturados automaticamente
-              </p>
-            </div>
-            
-            <div className="bg-card p-6 rounded-xl border border-border hover:border-primary/50 transition-all duration-300">
-              <TrendingUp className="h-8 w-8 text-success mx-auto mb-3" />
-              <h3 className="font-semibold text-card-foreground">Validação Inteligente</h3>
-              <p className="text-sm text-muted-foreground mt-2">
-                Cálculos automáticos e validação de dados
-              </p>
-            </div>
-            
-            <div className="bg-card p-6 rounded-xl border border-border hover:border-primary/50 transition-all duration-300">
-              <FileText className="h-8 w-8 text-warning mx-auto mb-3" />
-              <h3 className="font-semibold text-card-foreground">Resultados Instantâneos</h3>
-              <p className="text-sm text-muted-foreground mt-2">
-                Visualize totais e dados extraídos em tempo real
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Upload Section */}

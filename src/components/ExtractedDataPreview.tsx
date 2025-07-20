@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Save, Trash2, FileText, DollarSign, Package } from 'lucide-react';
+import { Save, Trash2, FileText, DollarSign, Package, Calendar } from 'lucide-react';
 
 interface ExtractedItem {
   num_solicitacao: string;
@@ -21,7 +23,7 @@ interface ExtractedDataPreviewProps {
     valor_total_extraido: number;
     total_solicitacoes: number;
   };
-  onSaveData: () => void;
+  onSaveData: (semana: string) => void;
   onClearData: () => void;
   isLoading?: boolean;
 }
@@ -33,6 +35,17 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
   onClearData,
   isLoading = false
 }) => {
+  const [semana, setSemana] = useState('');
+  const [semanaError, setSemanaError] = useState('');
+
+  const handleSaveClick = () => {
+    if (!semana.trim()) {
+      setSemanaError('A semana é obrigatória');
+      return;
+    }
+    setSemanaError('');
+    onSaveData(semana.trim());
+  };
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -90,10 +103,36 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
             Dados Extraídos - Aguardando Confirmação
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <CardContent className="space-y-6">
+          {/* Week Input Field */}
+          <div className="space-y-2">
+            <Label htmlFor="semana" className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Semana (Obrigatório)
+            </Label>
+            <Input
+              id="semana"
+              type="text"
+              placeholder="Ex: 2025-W03, Semana 15/2025, etc."
+              value={semana}
+              onChange={(e) => {
+                setSemana(e.target.value);
+                if (semanaError) setSemanaError('');
+              }}
+              className={semanaError ? 'border-destructive' : ''}
+            />
+            {semanaError && (
+              <p className="text-sm text-destructive">{semanaError}</p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              Identifique a semana deste boletim. Se já existir dados para esta semana, eles serão substituídos.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4">
             <Button 
-              onClick={onSaveData}
+              onClick={handleSaveClick}
               disabled={isLoading}
               className="flex-1"
               size="lg"
@@ -118,7 +157,7 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
             <p className="font-medium mb-2">⚠️ Importante:</p>
             <p>
               Os dados foram extraídos com sucesso do PDF, mas ainda não foram salvos no banco de dados. 
-              Clique em "Adicionar Informações ao Banco" para confirmar a inserção ou "Limpar" para descartar os dados.
+              Informe a semana e clique em "Adicionar Informações ao Banco" para confirmar a inserção ou "Limpar" para descartar os dados.
             </p>
           </div>
         </CardContent>

@@ -32,15 +32,56 @@ serve(async (req) => {
     const requestBody = await req.json();
     console.log('Request received with keys:', Object.keys(requestBody));
     
-    const { extracted_items }: { extracted_items: ExtractedItem[] } = requestBody;
+    const { extracted_items, semana }: { 
+      extracted_items: ExtractedItem[];
+      semana: string;
+    } = requestBody;
     
     if (!extracted_items || !Array.isArray(extracted_items) || extracted_items.length === 0) {
       throw new Error('Nenhum item foi fornecido para inserção');
     }
 
+    if (!semana || !semana.trim()) {
+      throw new Error('A semana é obrigatória');
+    }
+
+    const cleanSemana = semana.trim();
+
+    console.log(`Processing data for week: ${cleanSemana}`);
+
+    // Check if data for this week already exists and delete it
+    console.log('Checking for existing data for this week...');
+    const { data: existingData, error: checkError } = await supabase
+      .from('itens_solicitados')
+      .select('id')
+      .eq('semana', cleanSemana);
+
+    if (checkError) {
+      console.error('Error checking existing data:', checkError);
+      throw new Error(`Erro ao verificar dados existentes: ${checkError.message}`);
+    }
+
+    if (existingData && existingData.length > 0) {
+      console.log(`Found ${existingData.length} existing records for week ${cleanSemana}. Deleting...`);
+      
+      const { error: deleteError } = await supabase
+        .from('itens_solicitados')
+        .delete()
+        .eq('semana', cleanSemana);
+
+      if (deleteError) {
+        console.error('Error deleting existing data:', deleteError);
+        throw new Error(`Erro ao deletar dados existentes: ${deleteError.message}`);
+      }
+
+      console.log('Existing data deleted successfully');
+    } else {
+      console.log('No existing data found for this week');
+    }
+
     console.log(`Inserting ${extracted_items.length} items into database...`);
 
-    // Insert extracted data into Supabase
+    // Insert extracted data into Supabase with week information
     const { data: insertedData, error: insertError } = await supabase
       .from('itens_solicitados')
       .insert(extracted_items.map(item => ({
@@ -49,7 +90,8 @@ serve(async (req) => {
         codigo: item.codigo,
         quantidade: item.quantidade,
         valor_unitario: item.valor_unitario,
-        valor_total: item.valor_total
+        valor_total: item.valor_total,
+        semana: cleanSemana
       })));
 
     if (insertError) {
