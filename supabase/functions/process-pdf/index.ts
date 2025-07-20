@@ -127,13 +127,22 @@ async function extractTextFromPDF(base64File: string): Promise<string> {
     const decoder = new TextDecoder('utf-8', { fatal: false });
     let rawText = decoder.decode(bytes);
     
-    // Clean up the text - remove PDF control characters and keep readable content
+    // More aggressive text cleaning for PDF extraction
     let cleanText = rawText
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ') // Remove control chars except \n, \t, \r
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ') // Remove control chars
       .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .replace(/[^\w\s\d\.,\-\(\)\/\:]/g, ' ') // Keep only alphanumeric and common symbols
       .trim();
     
     console.log('Extracted text length:', cleanText.length);
+    
+    // Log first 500 chars to debug format
+    console.log('First 500 chars of extracted text:', cleanText.substring(0, 500));
+    
+    // Look for common patterns that might indicate table data
+    const hasNumbers = /\d{3,}/.test(cleanText);
+    const hasSequences = /\d+\s+\d{7,}/.test(cleanText);
+    console.log('Text analysis - Has long numbers:', hasNumbers, 'Has sequences:', hasSequences);
     
     return cleanText;
     
@@ -154,7 +163,11 @@ function parseBoletimMedicao(text: string): ExtractedItem[] {
     /(?:Solicitação|solicitação|SOLICITAÇÃO)[\s:]*(\d{3}\.?\d{3})/gi,
     /(?:Nº|N°|No\.|Numero)[\s]*(?:Solicitação|solicitação)[\s:]*(\d{3}\.?\d{3})/gi,
     /(\d{3}\.?\d{3})(?=.*(?:Seq|SEQ|seq))/gi,
-    /Sol[\s:]*(\d{3}\.?\d{3})/gi
+    /Sol[\s:]*(\d{3}\.?\d{3})/gi,
+    // Look for any 6-digit number that might be a solicitation
+    /(?:^|\s)(\d{6})(?=.*\d{9})/gm,
+    // Look for patterns like "001.001" or "001001"
+    /(\d{3}\.?\d{3})(?=.*(?:\d{7,12}))/gi
   ];
   
   // Find all solicitation numbers in the text
@@ -185,8 +198,26 @@ function parseBoletimMedicao(text: string): ExtractedItem[] {
   // If no solicitations found with patterns, try to extract items directly
   if (uniqueSolicitations.length === 0) {
     console.log('No solicitations found with patterns, trying direct extraction...');
-    const directItems = extractItemsFromSection(text, '001001');
-    return directItems;
+    
+    // Try to find any product codes (7-12 digit numbers) and extract surrounding data
+    const codeMatches = text.matchAll(/(\d{7,12})/g);
+    const foundCodes = Array.from(codeMatches);
+    
+    if (foundCodes.length > 0) {
+      console.log(`Found ${foundCodes.length} potential product codes, attempting extraction...`);
+      const directItems = extractItemsFromSection(text, '001001');
+      
+      // If direct extraction failed, try more aggressive pattern matching
+      if (directItems.length === 0) {
+        console.log('Direct extraction failed, trying aggressive pattern matching...');
+        return extractItemsAggressively(text);
+      }
+      
+      return directItems;
+    }
+    
+    console.log('No product codes found in text, attempting aggressive extraction...');
+    return extractItemsAggressively(text);
   }
   
   // Process each solicitation section
@@ -298,5 +329,94 @@ function extractItemsFromSection(sectionText: string, solicitationNum: string): 
     }
   }
   
+  return items;
+}
+
+// Aggressive extraction function as fallback
+function extractItemsAggressively(text: string): ExtractedItem[] {
+  console.log('Starting aggressive extraction...');
+  
+  const items: ExtractedItem[] = [];
+  
+  // Split text into lines and look for numeric patterns
+  const lines = text.split(/[\n\r]+/);
+  let sequenceCounter = 1;
+  const processedCodes = new Set<string>();
+  
+  for (const line of lines) {
+    // Skip very short lines
+    if (line.trim().length < 10) continue;
+    
+    // Look for lines with multiple numbers that could be item data
+    const numbers = line.match(/\d+[,\.]?\d*/g);
+    if (!numbers || numbers.length < 3) continue;
+    
+    // Try to find a product code (7-12 digits)
+    const potentialCode = numbers.find(num => {
+      const cleanNum = num.replace(/[,\.]/g, '');
+      return cleanNum.length >= 7 && cleanNum.length <= 12;
+    });
+    
+    if (!potentialCode) continue;
+    
+    const codigo = potentialCode.replace(/[,\.]/g, '');
+    if (processedCodes.has(codigo)) continue;
+    
+    // Look for decimal numbers that could be quantities and values
+    const decimalNumbers = numbers.filter(num => num.includes(',') || num.includes('.'));
+    
+    if (decimalNumbers.length >= 2) {
+      try {
+        // Parse the decimal numbers as potential quantity and values
+        const values = decimalNumbers.map(num => {
+          return parseFloat(num.replace(/\./g, '').replace(',', '.'));
+        }).filter(val => !isNaN(val) && val > 0);
+        
+        if (values.length >= 2) {
+          // Assume smallest value is quantity, others are monetary values
+          values.sort((a, b) => a - b);
+          
+          const quantidade = values[0] <= 1000 ? values[0] : values[values.length - 1]; // Prefer smaller number for quantity
+          let valorUnitario = 0;
+          let valorTotal = 0;
+          
+          // Find the largest value as total, second largest as unit
+          if (values.length >= 3) {
+            valorTotal = Math.max(...values);
+            valorUnitario = values[values.length - 2];
+          } else if (values.length === 2) {
+            valorTotal = Math.max(...values);
+            valorUnitario = valorTotal / quantidade;
+          }
+          
+          // Validate that the calculation makes sense
+          if (quantidade > 0 && valorUnitario > 0 && valorTotal > 0) {
+            const calculatedTotal = valorUnitario * quantidade;
+            const tolerance = valorTotal * 0.1; // 10% tolerance
+            
+            if (Math.abs(calculatedTotal - valorTotal) <= tolerance) {
+              processedCodes.add(codigo);
+              
+              items.push({
+                num_solicitacao: '001001', // Default solicitation
+                seq: sequenceCounter++,
+                codigo: codigo,
+                quantidade: Number(quantidade.toFixed(3)),
+                valor_unitario: Number(valorUnitario.toFixed(6)),
+                valor_total: Number(valorTotal.toFixed(6))
+              });
+              
+              console.log(`Aggressively extracted: Code ${codigo}, Qty ${quantidade}, Unit R$ ${valorUnitario.toFixed(2)}, Total R$ ${valorTotal.toFixed(2)}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('Error in aggressive extraction for line:', line.substring(0, 100));
+        continue;
+      }
+    }
+  }
+  
+  console.log(`Aggressive extraction completed: ${items.length} items found`);
   return items;
 }
