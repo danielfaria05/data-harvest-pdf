@@ -112,7 +112,7 @@ serve(async (req) => {
   }
 });
 
-// Real PDF extraction function using PDF.js (Deno-compatible)
+// Real PDF extraction function using unpdf (Deno-compatible)
 async function extractFromPDF(base64File: string, filename: string): Promise<ExtractedItem[]> {
   console.log('Starting real PDF extraction for:', filename);
   
@@ -126,39 +126,15 @@ async function extractFromPDF(base64File: string, filename: string): Promise<Ext
     
     console.log('PDF file converted to bytes, size:', bytes.length);
     
-    // Import PDF.js from CDN (Deno-compatible)
-    const pdfjsLib = await import('https://cdn.skypack.dev/pdfjs-dist@3.11.174/build/pdf.min.js');
+    // Import unpdf library (designed specifically for Deno and serverless)
+    const { extractText } = await import('https://esm.sh/unpdf@0.11.0');
     
-    // Set worker source to prevent worker issues in Deno
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.skypack.dev/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    console.log('unpdf library loaded, extracting text...');
     
-    console.log('PDF.js library loaded, parsing document...');
+    // Extract text directly using unpdf
+    const { text: fullText } = await extractText(bytes);
     
-    // Load PDF document
-    const loadingTask = pdfjsLib.getDocument({ data: bytes });
-    const pdf = await loadingTask.promise;
-    
-    console.log(`PDF loaded successfully. Number of pages: ${pdf.numPages}`);
-    
-    let fullText = '';
-    
-    // Extract text from all pages
-    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      console.log(`Processing page ${pageNum}/${pdf.numPages}...`);
-      
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      
-      // Combine text items into a single string
-      const pageText = textContent.items
-        .filter((item: any) => item.str && item.str.trim())
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      fullText += pageText + '\n';
-    }
-    
-    console.log('PDF text extraction completed, total text length:', fullText.length);
+    console.log('PDF text extraction completed, text length:', fullText.length);
     
     // Extract items from the text
     const extractedItems = parseTextForItems(fullText);
