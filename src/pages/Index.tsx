@@ -24,9 +24,18 @@ const Index = () => {
     try {
       console.log('Iniciando processamento do arquivo:', file.name, 'Tamanho:', file.size);
       
-      // Convert file to base64 for transmission
+      // Convert file to base64 safely for larger files
       const fileBuffer = await file.arrayBuffer();
-      const base64File = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+      const uint8Array = new Uint8Array(fileBuffer);
+      
+      // Convert to base64 in chunks to avoid call stack overflow
+      let binary = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      const base64File = btoa(binary);
       
       console.log('Arquivo convertido para base64, enviando para Edge Function...');
       
