@@ -20,6 +20,7 @@ interface ExtractionResult {
   quantidade_total_itens: number;
   valor_total_extraido: number;
   total_solicitacoes: number;
+  semana?: string;
   mensagem: string;
 }
 

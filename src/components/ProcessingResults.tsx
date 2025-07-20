@@ -11,6 +11,7 @@ interface ExtractionResult {
   quantidade_total_itens: number;
   valor_total_extraido: number;
   total_solicitacoes: number;
+  semana?: string;
   mensagem: string;
 }
 
@@ -80,6 +81,13 @@ export const ProcessingResults: React.FC<ProcessingResultsProps> = ({ result }) 
           </div>
         </div>
         <h2 className="text-3xl font-bold text-foreground mb-2">Extração Concluída!</h2>
+        {result.semana && (
+          <div className="mb-2">
+            <Badge variant="outline" className="text-lg px-3 py-1">
+              Semana: {result.semana}
+            </Badge>
+          </div>
+        )}
         <p className="text-muted-foreground">{result.mensagem}</p>
       </div>
 

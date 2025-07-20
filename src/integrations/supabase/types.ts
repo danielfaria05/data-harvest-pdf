@@ -43,6 +43,7 @@ export type Database = {
           id: string
           num_solicitacao: string
           quantidade: number
+          semana: string | null
           seq: number
           valor_total: number
           valor_unitario: number
@@ -54,6 +55,7 @@ export type Database = {
           id?: string
           num_solicitacao: string
           quantidade: number
+          semana?: string | null
           seq: number
           valor_total: number
           valor_unitario: number
@@ -65,6 +67,7 @@ export type Database = {
           id?: string
           num_solicitacao?: string
           quantidade?: number
+          semana?: string | null
           seq?: number
           valor_total?: number
           valor_unitario?: number

@@ -117,7 +117,8 @@ serve(async (req) => {
         quantidade_total_itens: totalItems,
         valor_total_extraido: totalValue,
         total_solicitacoes: uniqueSolicitations,
-        mensagem: "Dados inseridos com sucesso no banco de dados."
+        semana: cleanSemana,
+        mensagem: `Dados da semana "${cleanSemana}" inseridos com sucesso no banco de dados.`
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -130,7 +131,8 @@ serve(async (req) => {
       quantidade_total_itens: Number(summary.quantidade_total_itens),
       valor_total_extraido: Number(summary.valor_total_extraido),
       total_solicitacoes: Number(summary.total_solicitacoes),
-      mensagem: "Dados inseridos com sucesso no banco de dados."
+      semana: cleanSemana,
+      mensagem: `Dados da semana "${cleanSemana}" inseridos com sucesso no banco de dados.`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
