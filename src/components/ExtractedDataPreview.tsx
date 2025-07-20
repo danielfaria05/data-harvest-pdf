@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Save, Trash2, FileText, DollarSign, Package, Calendar } from 'lucide-react';
+import { Save, Trash2, FileText, DollarSign, Package, Calendar, FileCheck } from 'lucide-react';
 
 interface ExtractedItem {
   num_solicitacao: string;
@@ -22,6 +23,8 @@ interface ExtractedDataPreviewProps {
     quantidade_total_itens: number;
     valor_total_extraido: number;
     total_solicitacoes: number;
+    range_solicitacoes?: string;
+    arquivo_processado?: string;
   };
   onSaveData: (semana: string) => void;
   onClearData: () => void;
@@ -46,6 +49,7 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
     setSemanaError('');
     onSaveData(semana.trim());
   };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -62,6 +66,24 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* File Info Card */}
+      {summary.arquivo_processado && (
+        <Card className="border-success/20 bg-gradient-to-br from-success/5 to-transparent">
+          <CardContent className="flex items-center p-6">
+            <FileCheck className="h-8 w-8 text-success mr-4" />
+            <div>
+              <p className="font-semibold text-success">Arquivo processado com sucesso</p>
+              <p className="text-sm text-muted-foreground">{summary.arquivo_processado}</p>
+              {summary.range_solicitacoes && (
+                <p className="text-sm text-muted-foreground">
+                  Solicitações: {summary.range_solicitacoes}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -90,6 +112,9 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
             <div>
               <p className="text-2xl font-bold">{summary.total_solicitacoes}</p>
               <p className="text-sm text-muted-foreground">Solicitações</p>
+              {summary.range_solicitacoes && (
+                <p className="text-xs text-muted-foreground">({summary.range_solicitacoes})</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -154,9 +179,17 @@ export const ExtractedDataPreview: React.FC<ExtractedDataPreviewProps> = ({
           </div>
 
           <div className="text-sm text-muted-foreground bg-muted p-4 rounded-lg">
-            <p className="font-medium mb-2">⚠️ Importante:</p>
+            <p className="font-medium mb-2">✅ Extração Realizada:</p>
+            <p className="mb-2">
+              O PDF foi processado automaticamente e {summary.quantidade_total_itens} itens foram extraídos 
+              de {summary.total_solicitacoes} solicitações diferentes.
+            </p>
+            {summary.range_solicitacoes && (
+              <p className="mb-2">
+                <strong>Range de solicitações:</strong> {summary.range_solicitacoes}
+              </p>
+            )}
             <p>
-              Os dados foram extraídos com sucesso do PDF, mas ainda não foram salvos no banco de dados. 
               Informe a semana e clique em "Adicionar Informações ao Banco" para confirmar a inserção ou "Limpar" para descartar os dados.
             </p>
           </div>

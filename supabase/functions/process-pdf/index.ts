@@ -56,33 +56,42 @@ serve(async (req) => {
 
     console.log('File validation passed, starting extraction...');
 
-    // Extract data from PDF - currently simulated with accurate data
-    const extractedItems: ExtractedItem[] = await simulatePDFExtraction(file);
+    // Extract data from PDF - now with real PDF processing
+    const extractedItems: ExtractedItem[] = await extractFromPDF(file, filename);
     
     console.log(`Extracted ${extractedItems.length} items from PDF`);
 
     if (extractedItems.length === 0) {
       console.warn('No items extracted from PDF');
-      throw new Error('Nenhum item foi encontrado no PDF');
+      throw new Error('Nenhum item foi encontrado no PDF. Verifique se o PDF contém dados no formato esperado.');
     }
 
-    // Return extracted data WITHOUT inserting into database
-    // User will decide whether to save or not
+    // Calculate summary statistics
     const totalItems = extractedItems.length;
     const totalValue = extractedItems.reduce((sum, item) => sum + item.valor_total, 0);
     const uniqueSolicitations = new Set(extractedItems.map(item => item.num_solicitacao)).size;
+    
+    // Get solicitation range
+    const solicitationNumbers = Array.from(new Set(extractedItems.map(item => item.num_solicitacao)))
+      .map(num => parseInt(num))
+      .sort((a, b) => a - b);
+    
+    const minSolicitation = solicitationNumbers[0];
+    const maxSolicitation = solicitationNumbers[solicitationNumbers.length - 1];
 
     console.log('Extraction completed successfully');
-    console.log(`Summary: ${totalItems} items, ${uniqueSolicitations} solicitations, total value: ${totalValue}`);
+    console.log(`Summary: ${totalItems} items, ${uniqueSolicitations} solicitations (${minSolicitation} to ${maxSolicitation}), total value: ${totalValue}`);
     
     return new Response(JSON.stringify({
       extracted_items: extractedItems,
       summary: {
         quantidade_total_itens: totalItems,
         valor_total_extraido: totalValue,
-        total_solicitacoes: uniqueSolicitations
+        total_solicitacoes: uniqueSolicitations,
+        range_solicitacoes: `${minSolicitation} - ${maxSolicitation}`,
+        arquivo_processado: filename
       },
-      mensagem: "Extração realizada com sucesso. Dados prontos para inserção."
+      mensagem: `Extração realizada com sucesso. ${totalItems} itens encontrados em ${uniqueSolicitations} solicitações (${minSolicitation} a ${maxSolicitation}).`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -103,106 +112,132 @@ serve(async (req) => {
   }
 });
 
-// Simulate PDF extraction with accurate data matching the real PDF
-async function simulatePDFExtraction(base64File: string): Promise<ExtractedItem[]> {
-  console.log('Starting PDF data extraction simulation...');
+// Real PDF extraction function
+async function extractFromPDF(base64File: string, filename: string): Promise<ExtractedItem[]> {
+  console.log('Starting real PDF extraction for:', filename);
   
-  // Simulate processing delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // Real data extracted from the PDF shown by user
-  const extractedItems: ExtractedItem[] = [
-    // Solicitação 286344 - 2 itens (conforme PDF real)
-    {
-      num_solicitacao: "286344",
-      seq: 1,
-      codigo: "242401223",
-      quantidade: 30.00000,
-      valor_unitario: 12.081300,
-      valor_total: 362.439000
-    },
-    {
-      num_solicitacao: "286344",
-      seq: 2,
-      codigo: "242401312", 
-      quantidade: 10.00000,
-      valor_unitario: 17.879400,
-      valor_total: 178.794000
-    },
-    
-    // Solicitação 286348 - 2 itens (estava faltando o segundo item)
-    {
-      num_solicitacao: "286348",
-      seq: 1,
-      codigo: "201500065",
-      quantidade: 2.00000,
-      valor_unitario: 28.228200,
-      valor_total: 56.456400
-    },
-    {
-      num_solicitacao: "286348", 
-      seq: 2,
-      codigo: "311001772",
-      quantidade: 1.00000,
-      valor_unitario: 89.120000,
-      valor_total: 89.120000
-    },
-    
-    // Solicitação 286349 - 1 item (conforme primeira página do PDF)
-    {
-      num_solicitacao: "286349",
-      seq: 1,
-      codigo: "242401372",
-      quantidade: 8.00000,
-      valor_unitario: 75.450000,
-      valor_total: 603.600000
+  try {
+    // Convert base64 to Uint8Array
+    const binaryString = atob(base64File);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
-  ];
-
-  console.log(`Extraction simulation completed:`);
-  console.log(`- Total items extracted: ${extractedItems.length}`);
-  
-  // Log details for each solicitation
-  const solicitationGroups = extractedItems.reduce((groups, item) => {
-    if (!groups[item.num_solicitacao]) {
-      groups[item.num_solicitacao] = [];
+    
+    console.log('PDF file converted to bytes, size:', bytes.length);
+    
+    // Import PDF parsing library
+    const { default: pdfParse } = await import('https://esm.sh/pdf-parse@1.1.1');
+    
+    console.log('PDF library loaded, parsing document...');
+    
+    // Parse PDF and extract text
+    const pdfData = await pdfParse(bytes);
+    const fullText = pdfData.text;
+    
+    console.log('PDF parsed successfully, text length:', fullText.length);
+    console.log('Number of pages:', pdfData.numpages);
+    
+    // Extract items from the text
+    const extractedItems = parseTextForItems(fullText);
+    
+    console.log(`Parsing completed. Found ${extractedItems.length} items`);
+    
+    return extractedItems;
+    
+  } catch (error) {
+    console.error('Error in PDF extraction:', error);
+    
+    // If PDF parsing fails, provide detailed error
+    if (error instanceof Error) {
+      throw new Error(`Erro ao processar PDF: ${error.message}. Verifique se o arquivo não está corrompido.`);
     }
-    groups[item.num_solicitacao].push(item);
-    return groups;
-  }, {} as Record<string, ExtractedItem[]>);
-
-  Object.entries(solicitationGroups).forEach(([solicitacao, items]) => {
-    const totalValue = items.reduce((sum, item) => sum + item.valor_total, 0);
-    console.log(`- Solicitação ${solicitacao}: ${items.length} items, total value: R$ ${totalValue.toFixed(2)}`);
-  });
-
-  return extractedItems;
+    
+    throw new Error('Erro desconhecido ao processar o PDF');
+  }
 }
 
-/* 
-TODO: Replace simulatePDFExtraction with real PDF parsing
-For production implementation, you would:
+// Parse extracted text to find solicitations and items
+function parseTextForItems(text: string): ExtractedItem[] {
+  console.log('Starting text parsing for items...');
+  
+  const items: ExtractedItem[] = [];
+  
+  // Patterns for extraction
+  const solicitationPattern = /Nº\s+Solicitação:\s*(\d+)/gi;
+  const tableHeaderPattern = /Seq\.\s+PRODUTO\s+UNI\s+MED\.\s+QTD\s+VALOR/gi;
+  
+  // Find all solicitations
+  const solicitations: Array<{num: string, startIndex: number}> = [];
+  let match;
+  
+  while ((match = solicitationPattern.exec(text)) !== null) {
+    solicitations.push({
+      num: match[1],
+      startIndex: match.index
+    });
+  }
+  
+  console.log(`Found ${solicitations.length} solicitations:`, solicitations.map(s => s.num));
+  
+  // Process each solicitation
+  for (let i = 0; i < solicitations.length; i++) {
+    const currentSolicitation = solicitations[i];
+    const nextSolicitationStart = i < solicitations.length - 1 ? solicitations[i + 1].startIndex : text.length;
+    
+    // Extract text section for this solicitation
+    const sectionText = text.substring(currentSolicitation.startIndex, nextSolicitationStart);
+    
+    console.log(`Processing solicitation ${currentSolicitation.num}...`);
+    
+    // Find table data in this section
+    const sectionItems = extractItemsFromSection(sectionText, currentSolicitation.num);
+    items.push(...sectionItems);
+    
+    console.log(`Found ${sectionItems.length} items in solicitation ${currentSolicitation.num}`);
+  }
+  
+  return items;
+}
 
-1. Install a PDF parsing library like pdf-parse or pdf2pic
-2. Extract text from the PDF following the identified patterns:
-   - Look for "Nº Solicitação:" followed by the number
-   - Find product sections with headers: "Seq.", "PRODUTO", "UNI MED.", "QTD", "VALOR"
-   - Extract each row with: sequence, product code, unit, quantity, total value
-   - Calculate unit value: valor_unitario = valor_total / quantidade
-
-3. Example regex patterns for Brazilian number format:
-   - Solicitation: /Nº Solicitação:\s*(\d+)/g
-   - Product code: /(\d{9})/g (9-digit codes)
-   - Quantity: /([\d,\.]+)/g (Brazilian decimal format)
-   - Value: /R\$\s*([\d,\.]+)/g (Brazilian currency format)
-
-4. Parse and validate the extracted numbers:
-   - Convert Brazilian decimal format (comma as decimal separator)
-   - Handle thousands separators correctly
-   - Validate that valor_total = quantidade * valor_unitario
-
-5. Group items by solicitation number and assign correct sequence numbers
-
-The current simulation uses real data from the PDF to ensure accurate testing
-of the complete extraction and storage workflow.
-*/
+function extractItemsFromSection(sectionText: string, solicitationNum: string): ExtractedItem[] {
+  const items: ExtractedItem[] = [];
+  
+  // Pattern to match table rows with item data
+  // Looking for: number (seq) + 9-digit code + quantity + value
+  const itemPattern = /(\d+)\s+(\d{9})\s+[\w\s]+\s+([\d,\.]+)\s+R\$\s*([\d,\.]+)/gi;
+  
+  let match;
+  let sequenceCounter = 1;
+  
+  while ((match = itemPattern.exec(sectionText)) !== null) {
+    try {
+      const codigo = match[2];
+      const quantidadeStr = match[3].replace(/\./g, '').replace(',', '.');
+      const valorTotalStr = match[4].replace(/\./g, '').replace(',', '.');
+      
+      const quantidade = parseFloat(quantidadeStr);
+      const valorTotal = parseFloat(valorTotalStr);
+      const valorUnitario = quantidade > 0 ? valorTotal / quantidade : 0;
+      
+      // Validate extracted data
+      if (codigo && !isNaN(quantidade) && !isNaN(valorTotal) && quantidade > 0 && valorTotal > 0) {
+        items.push({
+          num_solicitacao: solicitationNum,
+          seq: sequenceCounter++,
+          codigo: codigo,
+          quantidade: quantidade,
+          valor_unitario: valorUnitario,
+          valor_total: valorTotal
+        });
+        
+        console.log(`Extracted item: ${codigo}, qty: ${quantidade}, total: R$ ${valorTotal.toFixed(2)}`);
+      }
+    } catch (error) {
+      console.warn('Error parsing item data:', error);
+      continue;
+    }
+  }
+  
+  return items;
+}
