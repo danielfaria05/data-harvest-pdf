@@ -35,14 +35,25 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const { file, filename, contentType }: PDFData = await req.json();
+    const requestBody = await req.json();
+    console.log('Request received with keys:', Object.keys(requestBody));
+    
+    const { file, filename, contentType }: PDFData = requestBody;
     
     console.log(`Processing file: ${filename}, type: ${contentType}`);
 
     // Validate PDF
     if (contentType !== 'application/pdf') {
-      throw new Error('Only PDF files are supported');
+      console.error('Invalid file type:', contentType);
+      throw new Error('Apenas arquivos PDF são suportados');
     }
+
+    if (!file) {
+      console.error('No file data received');
+      throw new Error('Nenhum arquivo foi recebido');
+    }
+
+    console.log('File validation passed, starting extraction...');
 
     // Mock PDF extraction - In production, you would use a PDF parsing library
     // For now, we'll simulate the extraction with realistic data
@@ -50,7 +61,13 @@ serve(async (req) => {
     
     console.log(`Extracted ${extractedItems.length} items from PDF`);
 
+    if (extractedItems.length === 0) {
+      console.warn('No items extracted from PDF');
+      throw new Error('Nenhum item foi encontrado no PDF');
+    }
+
     // Insert extracted data into Supabase
+    console.log('Inserting data into database...');
     const { data: insertedData, error: insertError } = await supabase
       .from('itens_solicitados')
       .insert(extractedItems.map(item => ({
@@ -64,7 +81,7 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('Database insert error:', insertError);
-      throw insertError;
+      throw new Error(`Erro ao salvar dados: ${insertError.message}`);
     }
 
     console.log('Data inserted successfully');
@@ -74,6 +91,8 @@ serve(async (req) => {
     const totalValue = extractedItems.reduce((sum, item) => sum + item.valor_total, 0);
     const uniqueSolicitations = new Set(extractedItems.map(item => item.num_solicitacao)).size;
 
+    console.log('Calculating summary from database...');
+    
     // Get updated summary from database
     const { data: summaryData, error: summaryError } = await supabase
       .rpc('get_extraction_summary');
@@ -81,6 +100,7 @@ serve(async (req) => {
     if (summaryError) {
       console.error('Summary calculation error:', summaryError);
       // Fallback to local calculation
+      console.log('Using fallback calculation');
       return new Response(JSON.stringify({
         quantidade_total_itens: totalItems,
         valor_total_extraido: totalValue,
@@ -92,6 +112,7 @@ serve(async (req) => {
     }
 
     const summary = summaryData[0];
+    console.log('Summary calculated:', summary);
     
     return new Response(JSON.stringify({
       quantidade_total_itens: Number(summary.quantidade_total_itens),
@@ -104,8 +125,13 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in process-pdf function:', error);
+    
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    console.error('Returning error response:', errorMessage);
+    
     return new Response(JSON.stringify({ 
-      error: error.message || 'Unknown error occurred' 
+      error: errorMessage,
+      details: error instanceof Error ? error.stack : 'No stack trace available'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -22,9 +22,13 @@ const Index = () => {
     setExtractionResult(null);
     
     try {
+      console.log('Iniciando processamento do arquivo:', file.name, 'Tamanho:', file.size);
+      
       // Convert file to base64 for transmission
       const fileBuffer = await file.arrayBuffer();
       const base64File = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+      
+      console.log('Arquivo convertido para base64, enviando para Edge Function...');
       
       const { data, error } = await supabase.functions.invoke('process-pdf', {
         body: {
@@ -34,8 +38,15 @@ const Index = () => {
         }
       });
 
+      console.log('Resposta da Edge Function:', { data, error });
+
       if (error) {
-        throw error;
+        console.error('Erro da Edge Function:', error);
+        throw new Error(`Erro no processamento: ${error.message || 'Erro desconhecido'}`);
+      }
+
+      if (!data) {
+        throw new Error('Nenhum dado retornado pela função de processamento');
       }
 
       setExtractionResult(data);
@@ -45,10 +56,15 @@ const Index = () => {
       });
 
     } catch (error) {
-      console.error('Erro ao processar PDF:', error);
+      console.error('Erro completo ao processar PDF:', error);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Erro desconhecido ao processar o PDF';
+      
       toast({
         title: "Erro no processamento",
-        description: "Não foi possível processar o PDF. Tente novamente.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

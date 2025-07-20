@@ -18,6 +18,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isProcessi
     const file = acceptedFiles[0];
     if (file && file.type === 'application/pdf') {
       setUploadProgress(0);
+      console.log('Arquivo aceito para upload:', file.name, file.size, 'bytes');
       onFileUpload(file);
       
       // Simulate upload progress
@@ -30,6 +31,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, isProcessi
           return prev + 10;
         });
       }, 200);
+    } else {
+      console.error('Arquivo rejeitado:', file?.type || 'tipo desconhecido');
     }
   }, [onFileUpload]);
 
