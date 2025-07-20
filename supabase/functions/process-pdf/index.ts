@@ -1,6 +1,4 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,39 +47,21 @@ serve(async (req) => {
       throw new Error('Nenhum arquivo foi recebido');
     }
 
-    console.log('File validation passed, creating mock data for testing...');
+    console.log('File validation passed, starting PDF text extraction...');
 
-    // For now, return mock data to ensure the basic flow works
-    const mockItems: ExtractedItem[] = [
-      {
-        num_solicitacao: "285",
-        seq: 1,
-        codigo: "123456789",
-        quantidade: 10,
-        valor_unitario: 5.50,
-        valor_total: 55.00
-      },
-      {
-        num_solicitacao: "285", 
-        seq: 2,
-        codigo: "987654321",
-        quantidade: 5,
-        valor_unitario: 12.00,
-        valor_total: 60.00
-      },
-      {
-        num_solicitacao: "286",
-        seq: 1,
-        codigo: "111222333",
-        quantidade: 3,
-        valor_unitario: 15.75,
-        valor_total: 47.25
-      }
-    ];
-
-    const extractedItems = mockItems;
+    // Extract text from PDF
+    const pdfText = await extractTextFromPDF(file);
+    console.log('PDF text extracted, length:', pdfText.length);
+    
+    // Parse extracted text to find items
+    const extractedItems = parseBoletimMedicao(pdfText);
     
     console.log(`Extracted ${extractedItems.length} items from PDF`);
+
+    if (extractedItems.length === 0) {
+      console.warn('No items extracted from PDF');
+      throw new Error('Nenhum item foi encontrado no PDF. Verifique se o PDF contém dados no formato esperado de Boletim de Medição.');
+    }
 
     // Calculate summary statistics
     const totalItems = extractedItems.length;
@@ -128,3 +108,178 @@ serve(async (req) => {
     });
   }
 });
+
+// Extract text from PDF using simple byte pattern analysis
+async function extractTextFromPDF(base64File: string): Promise<string> {
+  console.log('Starting PDF text extraction...');
+  
+  try {
+    // Convert base64 to bytes
+    const binaryString = atob(base64File);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    console.log('PDF file size:', bytes.length, 'bytes');
+    
+    // Convert to string and extract readable text
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    let rawText = decoder.decode(bytes);
+    
+    // Clean up the text - remove PDF control characters and keep readable content
+    let cleanText = rawText
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ' ') // Remove control chars except \n, \t, \r
+      .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+      .trim();
+    
+    console.log('Extracted text length:', cleanText.length);
+    
+    return cleanText;
+    
+  } catch (error) {
+    console.error('Error extracting text from PDF:', error);
+    throw new Error('Erro ao extrair texto do PDF');
+  }
+}
+
+// Parse Boletim de Medição text to extract structured data
+function parseBoletimMedicao(text: string): ExtractedItem[] {
+  console.log('Starting Boletim de Medição parsing...');
+  
+  const items: ExtractedItem[] = [];
+  
+  // Patterns to identify solicitation numbers and items
+  const solicitationPatterns = [
+    /(?:Solicitação|solicitação|SOLICITAÇÃO)[\s:]*(\d+)/gi,
+    /(?:Nº|N°|No\.|Numero)[\s]*(?:Solicitação|solicitação)[\s:]*(\d+)/gi,
+    /(?:Sol|SOL)[\s:]*(\d+)/gi
+  ];
+  
+  // Find all solicitation numbers in the text
+  const solicitations: Array<{num: string, index: number}> = [];
+  
+  for (const pattern of solicitationPatterns) {
+    let match;
+    pattern.lastIndex = 0; // Reset regex
+    while ((match = pattern.exec(text)) !== null) {
+      solicitations.push({
+        num: match[1],
+        index: match.index
+      });
+    }
+  }
+  
+  // Remove duplicates and sort by position
+  const uniqueSolicitations = solicitations
+    .filter((sol, index, arr) => 
+      arr.findIndex(s => s.num === sol.num) === index
+    )
+    .sort((a, b) => a.index - b.index);
+  
+  console.log('Found solicitations:', uniqueSolicitations.map(s => s.num));
+  
+  // Process each solicitation section
+  for (let i = 0; i < uniqueSolicitations.length; i++) {
+    const currentSol = uniqueSolicitations[i];
+    const nextSol = uniqueSolicitations[i + 1];
+    
+    // Extract text section for this solicitation
+    const startIndex = currentSol.index;
+    const endIndex = nextSol ? nextSol.index : text.length;
+    const sectionText = text.substring(startIndex, endIndex);
+    
+    console.log(`Processing solicitation ${currentSol.num}, section length: ${sectionText.length}`);
+    
+    // Extract items from this section
+    const sectionItems = extractItemsFromSection(sectionText, currentSol.num);
+    items.push(...sectionItems);
+    
+    console.log(`Found ${sectionItems.length} items in solicitation ${currentSol.num}`);
+  }
+  
+  return items;
+}
+
+function extractItemsFromSection(sectionText: string, solicitationNum: string): ExtractedItem[] {
+  const items: ExtractedItem[] = [];
+  
+  // Multiple patterns to catch different table formats
+  const itemPatterns = [
+    // Pattern 1: Seq + 9-digit code + description + quantity + unit value + total value
+    /(\d{1,3})\s+(\d{9})\s+[^\d]+?\s+([\d,\.]+)\s+[^\d]*?([\d,\.]+)\s+[^\d]*?([\d,\.]+)/gi,
+    
+    // Pattern 2: Looking for sequences of numbers that might be product data
+    /(\d{1,3})\s+(\d{8,12})\s+.+?\s+([\d,\.]+)\s+.+?\s+([\d,\.]+)\s+.+?\s+([\d,\.]+)/gi,
+    
+    // Pattern 3: More flexible pattern for any sequence-code-values combination
+    /(\d{1,3})\s+(\d{7,12})\s+.{10,100}?\s+([\d,\.]+)\s+.{0,20}?\s*([\d,\.]+)\s+.{0,20}?\s*([\d,\.]+)/gi
+  ];
+  
+  let sequenceCounter = 1;
+  
+  for (const pattern of itemPatterns) {
+    let match;
+    pattern.lastIndex = 0; // Reset regex
+    
+    while ((match = pattern.exec(sectionText)) !== null) {
+      try {
+        const seq = parseInt(match[1]);
+        const codigo = match[2];
+        
+        // Parse numeric values, handling Brazilian number format
+        const quantidadeStr = match[3].replace(/\./g, '').replace(',', '.');
+        const valorUnitarioStr = match[4] ? match[4].replace(/\./g, '').replace(',', '.') : '0';
+        const valorTotalStr = match[5] ? match[5].replace(/\./g, '').replace(',', '.') : '0';
+        
+        const quantidade = parseFloat(quantidadeStr);
+        let valorUnitario = parseFloat(valorUnitarioStr);
+        let valorTotal = parseFloat(valorTotalStr);
+        
+        // If unit value is missing, calculate it
+        if (valorUnitario === 0 && valorTotal > 0 && quantidade > 0) {
+          valorUnitario = valorTotal / quantidade;
+        }
+        
+        // If total value is missing, calculate it
+        if (valorTotal === 0 && valorUnitario > 0 && quantidade > 0) {
+          valorTotal = valorUnitario * quantidade;
+        }
+        
+        // Validate extracted data
+        if (codigo && codigo.length >= 7 && 
+            !isNaN(quantidade) && quantidade > 0 && 
+            !isNaN(valorTotal) && valorTotal > 0) {
+          
+          // Check if we already have this item (avoid duplicates)
+          const existingItem = items.find(item => 
+            item.codigo === codigo && item.num_solicitacao === solicitationNum
+          );
+          
+          if (!existingItem) {
+            items.push({
+              num_solicitacao: solicitationNum,
+              seq: sequenceCounter++,
+              codigo: codigo,
+              quantidade: quantidade,
+              valor_unitario: valorUnitario,
+              valor_total: valorTotal
+            });
+            
+            console.log(`Extracted item: Sol ${solicitationNum}, Code ${codigo}, Qty ${quantidade}, Total R$ ${valorTotal.toFixed(2)}`);
+          }
+        }
+      } catch (error) {
+        console.warn('Error parsing item data:', error);
+        continue;
+      }
+    }
+    
+    // If we found items with this pattern, don't try other patterns for this section
+    if (items.length > 0) {
+      break;
+    }
+  }
+  
+  return items;
+}
