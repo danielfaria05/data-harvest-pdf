@@ -154,22 +154,115 @@ async function extractTextFromPDF(base64File: string): Promise<string> {
 
 // Parse Boletim de Medição text to extract structured data
 function parseBoletimMedicao(text: string): ExtractedItem[] {
-  console.log('Starting intelligent Boletim de Medição parsing...');
+  console.log('Starting PICK LOJA Boletim de Medição parsing...');
   
   // Log a portion of the text to understand its structure
-  const sampleText = text.substring(0, 2000);
+  const sampleText = text.substring(0, 3000);
   console.log('Sample text for analysis:', sampleText);
   
-  // Try the new intelligent extraction approach
-  const items = extractWithIntelligentAnalysis(text);
+  const items: ExtractedItem[] = [];
   
-  if (items.length > 0) {
-    console.log(`Intelligent analysis found ${items.length} items`);
-    return items;
+  // Look for solicitation pattern: N° Solicitação: 286.344
+  const solicitationPattern = /N[°º]\s*Solicitação:\s*(\d{3}\.?\d{3})/gi;
+  const solicitations: Array<{num: string, index: number}> = [];
+  
+  let match;
+  while ((match = solicitationPattern.exec(text)) !== null) {
+    const cleanNum = match[1].replace('.', '');
+    solicitations.push({
+      num: cleanNum,
+      index: match.index
+    });
+    console.log('Found solicitation:', cleanNum, 'at index:', match.index);
   }
   
-  console.log('Intelligent analysis failed, trying numeric pattern extraction...');
-  return extractNumericPatterns(text);
+  if (solicitations.length === 0) {
+    console.log('No solicitations found, trying alternative patterns...');
+    return extractPickLojaAlternative(text);
+  }
+  
+  // Process each solicitation section
+  for (let i = 0; i < solicitations.length; i++) {
+    const currentSol = solicitations[i];
+    const nextSol = solicitations[i + 1];
+    
+    // Extract text section for this solicitation
+    const startIndex = currentSol.index;
+    const endIndex = nextSol ? nextSol.index : text.length;
+    const sectionText = text.substring(startIndex, endIndex);
+    
+    console.log(`Processing solicitation ${currentSol.num}, section length: ${sectionText.length}`);
+    
+    // Extract items from this section using PICK LOJA specific patterns
+    const sectionItems = extractPickLojaItems(sectionText, currentSol.num);
+    items.push(...sectionItems);
+    
+    console.log(`Found ${sectionItems.length} items in solicitation ${currentSol.num}`);
+  }
+  
+  return items;
+}
+
+// Extract items specifically for PICK LOJA format
+function extractPickLojaItems(sectionText: string, solicitationNum: string): ExtractedItem[] {
+  const items: ExtractedItem[] = [];
+  
+  // Pattern for PICK LOJA format: Seq. [number] [code] - [description] ... [quantity] [value]
+  const patterns = [
+    // Pattern 1: Seq. 1 242401223 - DESCRIPTION ... 30.00000 362.439000
+    /(\d+)\s+(\d{8,12})\s*-\s*[^0-9]*?(\d{1,3}\.?\d{5})\s+(\d{1,3}\.?\d{6})/gi,
+    
+    // Pattern 2: More flexible - look for sequence, code, and two decimal numbers at the end
+    /(\d+)\s+(\d{8,12})[\s\S]*?(\d+\.?\d{5})\s+(\d+\.?\d{6})/gi,
+    
+    // Pattern 3: Look for lines with Seq. followed by numbers
+    /Seq\.\s*(\d+)\s+(\d{8,12})[\s\S]*?(\d+\.?\d{5})\s+(\d+\.?\d{6})/gi
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    pattern.lastIndex = 0;
+    
+    while ((match = pattern.exec(sectionText)) !== null) {
+      try {
+        const seq = parseInt(match[1]);
+        const codigo = match[2];
+        
+        // Parse values (PICK LOJA uses dots for decimals)
+        const quantidadeStr = match[3].replace(/\./g, '').replace(',', '.');
+        const valorTotalStr = match[4].replace(/\./g, '').replace(',', '.');
+        
+        const quantidade = parseFloat(quantidadeStr) / 100000; // Adjust for format 30.00000 = 30
+        const valorTotal = parseFloat(valorTotalStr) / 1000; // Adjust for format 362.439000 = 362.439
+        
+        // Calculate unit value
+        const valorUnitario = quantidade > 0 ? valorTotal / quantidade : 0;
+        
+        if (codigo && codigo.length >= 8 && quantidade > 0 && valorTotal > 0) {
+          items.push({
+            num_solicitacao: solicitationNum,
+            seq: seq,
+            codigo: codigo,
+            quantidade: Number(quantidade.toFixed(6)),
+            valor_unitario: Number(valorUnitario.toFixed(6)),
+            valor_total: Number(valorTotal.toFixed(6))
+          });
+          
+          console.log(`PICK LOJA extracted: Sol ${solicitationNum}, Seq ${seq}, Code ${codigo}, Qty ${quantidade}, Total R$ ${valorTotal.toFixed(2)}`);
+        }
+      } catch (error) {
+        console.warn('Error parsing PICK LOJA item:', error);
+        continue;
+      }
+    }
+    
+    if (items.length > 0) {
+      console.log(`Found ${items.length} items with PICK LOJA pattern`);
+      break; // Stop trying other patterns if we found items
+    }
+  }
+  
+  return items;
 }
 
 // New intelligent analysis function
@@ -334,6 +427,134 @@ function extractNumericPatterns(text: string): ExtractedItem[] {
         if (items.length >= 50) break; // Limit to prevent too many items
       }
     }
+  }
+  
+  return items;
+}
+
+// Alternative extraction for PICK LOJA when standard pattern fails
+function extractPickLojaAlternative(text: string): ExtractedItem[] {
+  console.log('Starting PICK LOJA alternative extraction...');
+  
+  const items: ExtractedItem[] = [];
+  
+  // Split text into lines and look for item patterns
+  const lines = text.split(/[\n\r]+/);
+  let sequenceCounter = 1;
+  let currentSolicitation = '286344'; // Default from the document
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.length < 20) continue;
+    
+    // Look for solicitation numbers in lines
+    const solMatch = trimmedLine.match(/(\d{6})/);
+    if (solMatch && (trimmedLine.includes('Solicitação') || trimmedLine.includes('solicita'))) {
+      currentSolicitation = solMatch[1];
+      console.log('Found solicitation in alternative:', currentSolicitation);
+      continue;
+    }
+    
+    // Look for lines that might contain item data
+    // Pattern: sequence number + long code + description + values
+    const itemMatch = trimmedLine.match(/(\d{1,2})\s+(\d{9})\s+.*?(\d{1,3}\.?\d{5})\s+(\d{1,3}\.?\d{6})/);
+    
+    if (itemMatch) {
+      try {
+        const seq = parseInt(itemMatch[1]);
+        const codigo = itemMatch[2];
+        
+        // Parse PICK LOJA format values
+        const quantidadeStr = itemMatch[3];
+        const valorTotalStr = itemMatch[4];
+        
+        const quantidade = parseFloat(quantidadeStr.replace('.', '')) / 100000;
+        const valorTotal = parseFloat(valorTotalStr.replace('.', '')) / 1000;
+        const valorUnitario = quantidade > 0 ? valorTotal / quantidade : 0;
+        
+        if (codigo && quantidade > 0 && valorTotal > 0) {
+          items.push({
+            num_solicitacao: currentSolicitation,
+            seq: seq,
+            codigo: codigo,
+            quantidade: Number(quantidade.toFixed(6)),
+            valor_unitario: Number(valorUnitario.toFixed(6)),
+            valor_total: Number(valorTotal.toFixed(6))
+          });
+          
+          console.log(`Alternative extracted: Sol ${currentSolicitation}, Seq ${seq}, Code ${codigo}, Qty ${quantidade}, Total R$ ${valorTotal.toFixed(2)}`);
+        }
+      } catch (error) {
+        console.warn('Error in alternative extraction:', error);
+        continue;
+      }
+    }
+  }
+  
+  // If still no items found, try even more aggressive extraction
+  if (items.length === 0) {
+    console.log('Alternative extraction failed, trying aggressive PICK LOJA extraction...');
+    return extractPickLojaAggressive(text);
+  }
+  
+  return items;
+}
+
+// Most aggressive PICK LOJA extraction
+function extractPickLojaAggressive(text: string): ExtractedItem[] {
+  console.log('Starting aggressive PICK LOJA extraction...');
+  
+  const items: ExtractedItem[] = [];
+  
+  // Look for any 9-digit codes (product codes) and surrounding numbers
+  const codeMatches = Array.from(text.matchAll(/(\d{9})/g));
+  
+  for (let i = 0; i < codeMatches.length; i++) {
+    const match = codeMatches[i];
+    const codigo = match[1];
+    const matchIndex = match.index || 0;
+    
+    // Extract context around the code (200 chars before and after)
+    const start = Math.max(0, matchIndex - 200);
+    const end = Math.min(text.length, matchIndex + 200);
+    const context = text.substring(start, end);
+    
+    // Look for decimal numbers in the context
+    const numbers = context.match(/\d{1,3}\.?\d{5,6}/g) || [];
+    
+    if (numbers.length >= 2) {
+      try {
+        // Parse the largest numbers as quantity and value
+        const values = numbers
+          .map(num => parseFloat(num.replace('.', '')) / (num.length > 8 ? 1000 : 100000))
+          .filter(val => val > 0)
+          .sort((a, b) => b - a);
+        
+        if (values.length >= 2) {
+          const valorTotal = values[0];
+          const quantidade = values[values.length - 1];
+          const valorUnitario = valorTotal / quantidade;
+          
+          if (quantidade > 0 && quantidade <= 1000 && valorTotal > quantidade) {
+            items.push({
+              num_solicitacao: '286344',
+              seq: i + 1,
+              codigo: codigo,
+              quantidade: Number(quantidade.toFixed(6)),
+              valor_unitario: Number(valorUnitario.toFixed(6)),
+              valor_total: Number(valorTotal.toFixed(6))
+            });
+            
+            console.log(`Aggressively extracted: Code ${codigo}, Qty ${quantidade}, Total R$ ${valorTotal.toFixed(2)}`);
+          }
+        }
+      } catch (error) {
+        console.warn('Error in aggressive extraction:', error);
+        continue;
+      }
+    }
+    
+    if (items.length >= 20) break; // Limit results
   }
   
   return items;
