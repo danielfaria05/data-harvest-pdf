@@ -66,59 +66,22 @@ serve(async (req) => {
       throw new Error('Nenhum item foi encontrado no PDF');
     }
 
-    // Insert extracted data into Supabase
-    console.log('Inserting data into database...');
-    const { data: insertedData, error: insertError } = await supabase
-      .from('itens_solicitados')
-      .insert(extractedItems.map(item => ({
-        num_solicitacao: item.num_solicitacao,
-        seq: item.seq,
-        codigo: item.codigo,
-        quantidade: item.quantidade,
-        valor_unitario: item.valor_unitario,
-        valor_total: item.valor_total
-      })));
-
-    if (insertError) {
-      console.error('Database insert error:', insertError);
-      throw new Error(`Erro ao salvar dados: ${insertError.message}`);
-    }
-
-    console.log('Data inserted successfully');
-
-    // Calculate summary
+    // Return extracted data WITHOUT inserting into database
+    // User will decide whether to save or not
     const totalItems = extractedItems.length;
     const totalValue = extractedItems.reduce((sum, item) => sum + item.valor_total, 0);
     const uniqueSolicitations = new Set(extractedItems.map(item => item.num_solicitacao)).size;
 
-    console.log('Calculating summary from database...');
-    
-    // Get updated summary from database
-    const { data: summaryData, error: summaryError } = await supabase
-      .rpc('get_extraction_summary');
-
-    if (summaryError) {
-      console.error('Summary calculation error:', summaryError);
-      // Fallback to local calculation
-      console.log('Using fallback calculation');
-      return new Response(JSON.stringify({
-        quantidade_total_itens: totalItems,
-        valor_total_extraido: totalValue,
-        total_solicitacoes: uniqueSolicitations,
-        mensagem: "Extração realizada com sucesso."
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const summary = summaryData[0];
-    console.log('Summary calculated:', summary);
+    console.log('Extraction completed successfully');
     
     return new Response(JSON.stringify({
-      quantidade_total_itens: Number(summary.quantidade_total_itens),
-      valor_total_extraido: Number(summary.valor_total_extraido),
-      total_solicitacoes: Number(summary.total_solicitacoes),
-      mensagem: "Extração realizada com sucesso."
+      extracted_items: extractedItems,
+      summary: {
+        quantidade_total_itens: totalItems,
+        valor_total_extraido: totalValue,
+        total_solicitacoes: uniqueSolicitations
+      },
+      mensagem: "Extração realizada com sucesso. Dados prontos para inserção."
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

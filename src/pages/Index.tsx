@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
 import { FileUpload } from '@/components/FileUpload';
 import { ProcessingResults } from '@/components/ProcessingResults';
+import { ExtractedDataPreview } from '@/components/ExtractedDataPreview';
 import { Header } from '@/components/Header';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { FileText, Database, TrendingUp } from 'lucide-react';
+
+interface ExtractedItem {
+  num_solicitacao: string;
+  seq: number;
+  codigo: string;
+  quantidade: number;
+  valor_unitario: number;
+  valor_total: number;
+}
 
 interface ExtractionResult {
   quantidade_total_itens: number;
@@ -13,13 +23,26 @@ interface ExtractionResult {
   mensagem: string;
 }
 
+interface ExtractedDataResponse {
+  extracted_items: ExtractedItem[];
+  summary: {
+    quantidade_total_itens: number;
+    valor_total_extraido: number;
+    total_solicitacoes: number;
+  };
+  mensagem: string;
+}
+
 const Index = () => {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [extractionResult, setExtractionResult] = useState<ExtractionResult | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [extractedData, setExtractedData] = useState<ExtractedDataResponse | null>(null);
+  const [savedResult, setSavedResult] = useState<ExtractionResult | null>(null);
 
   const handleFileUpload = async (file: File) => {
     setIsProcessing(true);
-    setExtractionResult(null);
+    setExtractedData(null);
+    setSavedResult(null);
     
     try {
       console.log('Iniciando processamento do arquivo:', file.name, 'Tamanho:', file.size);
@@ -58,10 +81,10 @@ const Index = () => {
         throw new Error('Nenhum dado retornado pela função de processamento');
       }
 
-      setExtractionResult(data);
+      setExtractedData(data);
       toast({
         title: "Extração concluída!",
-        description: `${data.quantidade_total_itens} itens processados com sucesso.`,
+        description: `${data.summary.quantidade_total_itens} itens extraídos. Aguardando confirmação para salvar.`,
       });
 
     } catch (error) {
@@ -79,6 +102,64 @@ const Index = () => {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleSaveData = async () => {
+    if (!extractedData) return;
+    
+    setIsSaving(true);
+    
+    try {
+      console.log('Salvando dados extraídos no banco...');
+      
+      const { data, error } = await supabase.functions.invoke('save-extracted-data', {
+        body: {
+          extracted_items: extractedData.extracted_items
+        }
+      });
+
+      if (error) {
+        console.error('Erro ao salvar dados:', error);
+        throw new Error(`Erro ao salvar: ${error.message || 'Erro desconhecido'}`);
+      }
+
+      if (!data) {
+        throw new Error('Nenhuma resposta da função de salvamento');
+      }
+
+      setSavedResult(data);
+      setExtractedData(null); // Clear extracted data after saving
+      
+      toast({
+        title: "Dados salvos!",
+        description: `${data.quantidade_total_itens} itens foram inseridos no banco de dados.`,
+      });
+
+    } catch (error) {
+      console.error('Erro ao salvar dados:', error);
+      
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'Erro desconhecido ao salvar os dados';
+      
+      toast({
+        title: "Erro ao salvar",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearData = () => {
+    setExtractedData(null);
+    setSavedResult(null);
+    
+    toast({
+      title: "Dados limpos",
+      description: "Os dados extraídos foram descartados.",
+    });
   };
 
   return (
@@ -142,10 +223,23 @@ const Index = () => {
           />
         </div>
 
-        {/* Results Section */}
-        {extractionResult && (
+        {/* Extracted Data Preview Section */}
+        {extractedData && (
+          <div className="max-w-6xl mx-auto mb-8">
+            <ExtractedDataPreview
+              extractedItems={extractedData.extracted_items}
+              summary={extractedData.summary}
+              onSaveData={handleSaveData}
+              onClearData={handleClearData}
+              isLoading={isSaving}
+            />
+          </div>
+        )}
+
+        {/* Final Results Section */}
+        {savedResult && (
           <div className="max-w-6xl mx-auto">
-            <ProcessingResults result={extractionResult} />
+            <ProcessingResults result={savedResult} />
           </div>
         )}
       </main>

@@ -2,3 +2,6 @@ project_id = "yuyortcqojlgzeunmajm"
 
 [functions.process-pdf]
 verify_jwt = false
+
+[functions.save-extracted-data]
+verify_jwt = false
